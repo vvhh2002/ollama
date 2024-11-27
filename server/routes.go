@@ -36,7 +36,6 @@ import (
 	"github.com/ollama/ollama/runners"
 	"github.com/ollama/ollama/server/imageproc"
 	"github.com/ollama/ollama/template"
-	"github.com/ollama/ollama/types/errtypes"
 	"github.com/ollama/ollama/types/model"
 	"github.com/ollama/ollama/version"
 )
@@ -110,14 +109,40 @@ func (s *Server) scheduleRunner(ctx context.Context, name string, caps []Capabil
 	return runner.llama, model, &opts, nil
 }
 
+// newErr creates a structured API ErrorResponse from an existing error
+func newErr(err error) api.ErrorResponse {
+	if err == nil {
+		return api.ErrorResponse{}
+	}
+
+	// Default to just returning the generic error message
+	resp := api.ErrorResponse{
+		Code:    api.ErrCodeGeneral,
+		Message: err.Error(),
+	}
+
+	if errors.Is(err, io.EOF) {
+		resp.Code = api.ErrCodeMissingRequestBody
+		resp.Message = "missing request body"
+	}
+
+	// Add additional error specific data, if any
+	var errResp *api.ErrUnknownOllamaKey
+	if errors.As(err, &errResp) {
+		resp.Code = api.ErrCodeUnknownKey
+		resp.Data = map[string]any{
+			"key": errResp.Key,
+		}
+	}
+
+	return resp
+}
+
 func (s *Server) GenerateHandler(c *gin.Context) {
 	checkpointStart := time.Now()
 	var req api.GenerateRequest
-	if err := c.ShouldBindJSON(&req); errors.Is(err, io.EOF) {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "missing request body"})
-		return
-	} else if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, newErr(err))
 		return
 	}
 
@@ -610,7 +635,7 @@ func (s *Server) PushHandler(c *gin.Context) {
 		defer cancel()
 
 		if err := PushModel(ctx, model, regOpts, fn); err != nil {
-			ch <- gin.H{"error": err.Error()}
+			ch <- newErr(err)
 		}
 	}()
 
@@ -650,7 +675,7 @@ func (s *Server) CreateHandler(c *gin.Context) {
 
 	name := model.ParseName(cmp.Or(r.Model, r.Name))
 	if !name.IsValid() {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": errtypes.InvalidModelNameErrMsg})
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": api.InvalidModelNameErrMsg})
 		return
 	}
 
