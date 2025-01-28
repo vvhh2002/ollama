@@ -23,8 +23,8 @@ var metrics []BenchmarkMetrics
 // models contains the list of model names to benchmark
 var models = []string{
 	"llama3.2:1b",
-	// "qwen2.5:7b",
-	// "llama3.3:70b",
+	"llama3.1:8b",
+	"llama3.3:70b",
 }
 
 // TestCase defines a benchmark test scenario with prompt characteristics
@@ -70,7 +70,7 @@ func BenchmarkServerInference(b *testing.B) {
 	b.Log("Server available")
 
 	tests := []TestCase{
-		// {"short_prompt", "Write a long story", 100},
+		{"short_prompt", "Write a long story", 100},
 		{"medium_prompt", "Write a detailed economic analysis", 500},
 		{"long_prompt", "Write a comprehensive AI research paper", 1000},
 	}
