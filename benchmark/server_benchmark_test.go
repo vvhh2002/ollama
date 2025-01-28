@@ -109,26 +109,28 @@ func BenchmarkServerInference(b *testing.B) {
 func runBenchmark(b *testing.B, tt TestCase, model string, scenario ScenarioType, client *api.Client) []BenchmarkMetrics {
 	results := make([]BenchmarkMetrics, b.N)
 
+	if scenario == WarmStart {
+		// Pre-warm the model by generating some tokens
+		for i := 0; i < 2; i++ {
+			client.Generate(
+				context.Background(),
+				&api.GenerateRequest{
+					Model:   model,
+					Prompt:  tt.prompt,
+					Options: map[string]interface{}{"num_predict": 50, "temperature": 0.1},
+				},
+				func(api.GenerateResponse) error { return nil },
+			)
+		}
+	}
+
+	b.ResetTimer()
+
 	// Run benchmark iterations
 	for i := 0; i < b.N; i++ {
-		switch scenario {
-		case WarmStart:
-			// Pre-warm the model by generating some tokens
-			for i := 0; i < 2; i++ {
-				client.Generate(
-					context.Background(),
-					&api.GenerateRequest{
-						Model:   model,
-						Prompt:  tt.prompt,
-						Options: map[string]interface{}{"num_predict": tt.maxTokens, "temperature": 0.1},
-					},
-					func(api.GenerateResponse) error { return nil },
-				)
-			}
-		case ColdStart:
+		if scenario == ColdStart {
 			unloadModel(client, model, b)
 		}
-		b.ResetTimer()
 
 		results[i] = runSingleIteration(context.Background(), client, tt, model, b)
 		results[i].scenario = scenario.String()
