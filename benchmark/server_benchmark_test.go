@@ -113,7 +113,7 @@ func runBenchmark(b *testing.B, tt TestCase, model string, scenario ScenarioType
 
 	if scenario == WarmStart {
 		// Pre-warm the model by generating some tokens
-		for i := range 2 {
+		for range 2 {
 			err := client.Generate(
 				context.Background(),
 				&api.GenerateRequest{
