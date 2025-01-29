@@ -64,9 +64,11 @@ func BenchmarkServerInference(b *testing.B) {
 	b.Logf("Starting benchmark suite with %d models", len(models))
 
 	// Verify server availability
-	if _, err := http.Get(serverURL + "/api/version"); err != nil {
+	resp, err := http.Get(serverURL + "/api/version")
+	if err != nil {
 		b.Fatalf("Server unavailable: %v", err)
 	}
+	defer resp.Body.Close()
 	b.Log("Server available")
 
 	tests := []TestCase{
@@ -111,8 +113,8 @@ func runBenchmark(b *testing.B, tt TestCase, model string, scenario ScenarioType
 
 	if scenario == WarmStart {
 		// Pre-warm the model by generating some tokens
-		for i := 0; i < 2; i++ {
-			client.Generate(
+		for i := range 2 {
+			err := client.Generate(
 				context.Background(),
 				&api.GenerateRequest{
 					Model:   model,
@@ -121,13 +123,16 @@ func runBenchmark(b *testing.B, tt TestCase, model string, scenario ScenarioType
 				},
 				func(api.GenerateResponse) error { return nil },
 			)
+			if err != nil {
+				b.Logf("Error during model warm-up: %v", err)
+			}
 		}
 	}
 
 	b.ResetTimer()
 
 	// Run benchmark iterations
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		if scenario == ColdStart {
 			unloadModel(client, model, b)
 		}
@@ -170,7 +175,7 @@ func runSingleIteration(ctx context.Context, client *api.Client, tt TestCase, mo
 	}
 
 	// Execute generation request with metrics collection
-	client.Generate(ctx, req, func(resp api.GenerateResponse) error {
+	err := client.Generate(ctx, req, func(resp api.GenerateResponse) error {
 		if ttft == 0 {
 			ttft = time.Since(start)
 		}
@@ -180,6 +185,9 @@ func runSingleIteration(ctx context.Context, client *api.Client, tt TestCase, mo
 		}
 		return nil
 	})
+	if err != nil {
+		b.Logf("Generation error: %v", err)
+	}
 
 	totalTime := lastToken.Sub(start)
 	return BenchmarkMetrics{
